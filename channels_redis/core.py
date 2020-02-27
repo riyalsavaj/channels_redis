@@ -4,7 +4,6 @@ import binascii
 import collections
 import hashlib
 import itertools
-import logging
 import random
 import string
 import time
@@ -15,8 +14,6 @@ import msgpack
 
 from channels.exceptions import ChannelFull
 from channels.layers import BaseChannelLayer
-
-logger = logging.getLogger(__name__)
 
 
 def _wrap_close(loop, pool):
@@ -72,9 +69,6 @@ class ConnectionPool:
         if not conns:
             conns.append(await aioredis.create_redis(**self.host, loop=loop))
         conn = conns.pop()
-        if conn.closed:
-            conn = await self.pop(loop=loop)
-            return conn
         self.in_use[conn] = loop
         return conn
 
@@ -621,11 +615,9 @@ class RedisChannelLayer(BaseChannelLayer):
                 x.decode("utf8") for x in await connection.zrange(key, 0, -1)
             ]
 
-        (
-            connection_to_channel_keys,
-            channel_keys_to_message,
-            channel_keys_to_capacity,
-        ) = self._map_channel_keys_to_connection(channel_names, message)
+        connection_to_channel_keys, channel_keys_to_message, channel_keys_to_capacity = self._map_channel_keys_to_connection(
+            channel_names, message
+        )
 
         for connection_index, channel_redis_keys in connection_to_channel_keys.items():
 
@@ -635,16 +627,13 @@ class RedisChannelLayer(BaseChannelLayer):
             # __asgi_channel__ key.
 
             group_send_lua = (
-                """ local over_capacity = 0
+                """
                     for i=1,#KEYS do
                         if redis.call('LLEN', KEYS[i]) < tonumber(ARGV[i + #KEYS]) then
                             redis.call('LPUSH', KEYS[i], ARGV[i])
                             redis.call('EXPIRE', KEYS[i], %d)
-                        else
-                            over_capacity = over_capacity + 1
                         end
                     end
-                    return over_capacity
                     """
                 % self.expiry
             )
@@ -663,13 +652,145 @@ class RedisChannelLayer(BaseChannelLayer):
 
             # channel_keys does not contain a single redis key more than once
             async with self.connection(connection_index) as connection:
-                channels_over_capacity = await connection.eval(
+                await connection.eval(
                     group_send_lua, keys=channel_redis_keys, args=args
                 )
-                if channels_over_capacity > 0:
-                    logger.exception(
-                        f"{channels_over_capacity} of {len(channel_names)} channels over capacity in group {group}"
-                    )
+
+    async def multi_group_send(self, groups, message):
+        """
+        Sends a message to the entire group.
+        """
+        print("11111111111111111111111111111111111111111111111111")
+        # print(groups)
+        print(self.hosts)
+        # group = 'user_1'
+        # assert self.valid_group_name(group), "Group name not valid"
+        # Retrieve list of all channel names
+        channel_names_list = []
+        # key = self._group_key(group)
+        # print("self._group_key(group)====>>>", self._group_key(group))
+        start_time = time.time()
+        groups_connections = {}
+
+        for group in groups:
+
+            try:
+                groups_connections[str(self.consistent_hash(group))].append(self._group_key(group))
+            except:
+                groups_connections.update({""+ str(self.consistent_hash(group)) + "":[self._group_key(group)]})
+
+            # if group == 'user 99998':
+            #     break
+
+        print(groups_connections.keys())
+
+        for index in groups_connections.keys():
+            print("")
+
+            # cmd = (
+            #     """
+            #         redis.call( 'zrange', KEYS[1], i, i+20, 'withscores' )
+            #     """ % str(len(groups_connections[index]))
+            # )
+
+            async with self.connection(int(index)) as connection:
+                # Discard old channels based on group_expiry
+                # print(connection.mget(['user_1', 'user_2']))
+                print("")
+                print("")
+                print("")
+                print("")
+                print("")
+                print("-------------------------------------------------------------------------------")
+                print("")
+                print(dir(connection.zunionstore))
+                print(connection.zunionstore.__call__)
+                new_collection = [self._group_key('user_1'), self._group_key('user_2'), self._group_key('user_3'), self._group_key('user_4')]
+                print(type(new_collection))
+                print(await connection.zunionstore('output' + index, 'None', groups_connections[index]))
+                print("")
+                print("")
+                print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+                print("")
+                print(await connection.zrange('output' + index, 0, -1))
+                print("")
+                print("")
+                print("")
+                print("")
+                print("")
+                channel_names = [
+                    x.decode("utf8") for x in await connection.zrange('output' + index, 0, -1)
+                ]
+
+                channel_names_list = channel_names_list + channel_names
+                # for group in groups_connections[index]:
+                #     key = self._group_key(group)
+                #     await connection.zremrangebyscore(
+                #         key, min=0, max=int(time.time()) - self.group_expiry
+                #     )
+
+                    
+
+        # for group in groups:
+        #     key = self._group_key(group)
+            
+
+
+        # async with self.connection(self.consistent_hash('user_2')) as connection:
+        #     # Discard old channels based on group_expiry
+        #     await connection.zremrangebyscore(
+        #         b'asgi::group:user_2', min=0, max=int(time.time()) - self.group_expiry
+        #     )
+
+        #     channel_names2 = [
+        #         x.decode("utf8") for x in await connection.zrange(b'asgi::group:user_2', 0, -1)
+        #     ]
+    
+        print("--- %s seconds ---" % (time.time() - start_time))
+        print("")
+        print("channel_names_list======>>>>>", channel_names_list)
+
+        connection_to_channel_keys, channel_keys_to_message, channel_keys_to_capacity = self._map_channel_keys_to_connection(
+            channel_names_list, message
+        )
+        
+
+        for connection_index, channel_redis_keys in connection_to_channel_keys.items():
+
+            # Create a LUA script specific for this connection.
+            # Make sure to use the message specific to this channel, it is
+            # stored in channel_to_message dict and contains the
+            # __asgi_channel__ key.
+
+            group_send_lua = (
+                """
+                    for i=1,#KEYS do
+                        if redis.call('LLEN', KEYS[i]) < tonumber(ARGV[i + #KEYS]) then
+                            redis.call('LPUSH', KEYS[i], ARGV[i])
+                            redis.call('EXPIRE', KEYS[i], %d)
+                        end
+                    end
+                    """
+                % self.expiry
+            )
+
+            # We need to filter the messages to keep those related to the connection
+            args = [
+                channel_keys_to_message[channel_key]
+                for channel_key in channel_redis_keys
+            ]
+
+            # We need to send the capacity for each channel
+            args += [
+                channel_keys_to_capacity[channel_key]
+                for channel_key in channel_redis_keys
+            ]
+
+            # channel_keys does not contain a single redis key more than once
+            async with self.connection(connection_index) as connection:
+                await connection.eval(
+                    group_send_lua, keys=channel_redis_keys, args=args
+                )
 
     def _map_channel_to_connection(self, channel_names, message):
         """
@@ -814,7 +935,7 @@ class RedisChannelLayer(BaseChannelLayer):
         """
         Returns the correct connection for the index given.
         Lazily instantiates pools.
-        """
+        """ 
         # Catch bad indexes
         if not 0 <= index < self.ring_size:
             raise ValueError(
