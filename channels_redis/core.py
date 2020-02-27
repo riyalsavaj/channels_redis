@@ -660,98 +660,30 @@ class RedisChannelLayer(BaseChannelLayer):
         """
         Sends a message to the entire group.
         """
-        print("11111111111111111111111111111111111111111111111111")
-        # print(groups)
-        print(self.hosts)
-        # group = 'user_1'
-        # assert self.valid_group_name(group), "Group name not valid"
-        # Retrieve list of all channel names
-        channel_names_list = []
-        # key = self._group_key(group)
-        # print("self._group_key(group)====>>>", self._group_key(group))
-        start_time = time.time()
+        # start_time = time.time()
         groups_connections = {}
 
-        for group in groups:
+        print(len(groups))
 
+        for group in groups:
             try:
                 groups_connections[str(self.consistent_hash(group))].append(self._group_key(group))
             except:
                 groups_connections.update({""+ str(self.consistent_hash(group)) + "":[self._group_key(group)]})
 
-            # if group == 'user 99998':
-            #     break
-
-        print(groups_connections.keys())
-
         for index in groups_connections.keys():
-            print("")
-
-            # cmd = (
-            #     """
-            #         redis.call( 'zrange', KEYS[1], i, i+20, 'withscores' )
-            #     """ % str(len(groups_connections[index]))
-            # )
-
             async with self.connection(int(index)) as connection:
-                # Discard old channels based on group_expiry
-                # print(connection.mget(['user_1', 'user_2']))
-                print("")
-                print("")
-                print("")
-                print("")
-                print("")
-                print("-------------------------------------------------------------------------------")
-                print("")
-                print(dir(connection.zunionstore))
-                print(connection.zunionstore.__call__)
-                new_collection = [self._group_key('user_1'), self._group_key('user_2'), self._group_key('user_3'), self._group_key('user_4')]
-                print(type(new_collection))
-                print(await connection.zunionstore('output' + index, 'None', groups_connections[index]))
-                print("")
-                print("")
-                print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-                print("")
-                print(await connection.zrange('output' + index, 0, -1))
-                print("")
-                print("")
-                print("")
-                print("")
-                print("")
+                await connection.zunionstore('output' + index, 'None', groups_connections[index])
                 channel_names = [
                     x.decode("utf8") for x in await connection.zrange('output' + index, 0, -1)
                 ]
-
-                channel_names_list = channel_names_list + channel_names
-                # for group in groups_connections[index]:
-                #     key = self._group_key(group)
-                #     await connection.zremrangebyscore(
-                #         key, min=0, max=int(time.time()) - self.group_expiry
-                #     )
-
-                    
-
-        # for group in groups:
-        #     key = self._group_key(group)
-            
-
-
-        # async with self.connection(self.consistent_hash('user_2')) as connection:
-        #     # Discard old channels based on group_expiry
-        #     await connection.zremrangebyscore(
-        #         b'asgi::group:user_2', min=0, max=int(time.time()) - self.group_expiry
-        #     )
-
-        #     channel_names2 = [
-        #         x.decode("utf8") for x in await connection.zrange(b'asgi::group:user_2', 0, -1)
-        #     ]
     
-        print("--- %s seconds ---" % (time.time() - start_time))
-        print("")
-        print("channel_names_list======>>>>>", channel_names_list)
+        # print("--- %s seconds ---" % (time.time() - start_time))
+        # print("")
+        # print("channel_names======>>>>>", channel_names)
 
         connection_to_channel_keys, channel_keys_to_message, channel_keys_to_capacity = self._map_channel_keys_to_connection(
-            channel_names_list, message
+            channel_names, message
         )
         
 
