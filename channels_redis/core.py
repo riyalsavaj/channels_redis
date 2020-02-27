@@ -660,10 +660,9 @@ class RedisChannelLayer(BaseChannelLayer):
         """
         Sends a message to the entire group.
         """
+        channel_names_list = []
         # start_time = time.time()
         groups_connections = {}
-
-        print(len(groups))
 
         for group in groups:
             try:
@@ -677,13 +676,15 @@ class RedisChannelLayer(BaseChannelLayer):
                 channel_names = [
                     x.decode("utf8") for x in await connection.zrange('output' + index, 0, -1)
                 ]
-    
+
+                channel_names_list = channel_names_list + channel_names
+
         # print("--- %s seconds ---" % (time.time() - start_time))
         # print("")
-        # print("channel_names======>>>>>", channel_names)
+        # print("channel_names_list======>>>>>", channel_names_list)
 
         connection_to_channel_keys, channel_keys_to_message, channel_keys_to_capacity = self._map_channel_keys_to_connection(
-            channel_names, message
+            channel_names_list, message
         )
         
 
